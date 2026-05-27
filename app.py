@@ -27,7 +27,6 @@ def sanear_notebook(ruta_ipynb):
             block = match.group(0)
             lines = block.split('\n')
             for i, line in enumerate(lines):
-                # Si una línea tiene más de un '&', quita los sobrantes
                 if line.count('&') > 1:
                     parts = line.split('&')
                     lines[i] = parts[0] + '&' + ' '.join(parts[1:])
@@ -36,30 +35,30 @@ def sanear_notebook(ruta_ipynb):
         for cell in notebook.get('cells', []):
             if cell.get('cell_type') == 'markdown':
                 source = cell.get('source', [])
-                if isinstance(source, list):
-                    text = "".join(source)
-                else:
-                    text = source
+                text = "".join(source) if isinstance(source, list) else source
                 
-                # 1. Quitar líneas vacías dentro de bloques de ecuaciones largas
+                # 1. Quitar líneas vacías dentro de bloques matemáticos
                 text = re.sub(r'\$\$.*?\$\$', quitar_lineas_vacias, text, flags=re.DOTALL)
                 text = re.sub(r'\\begin\{[a-zA-Z\*]+\}.*?\\end\{[a-zA-Z\*]+\}', quitar_lineas_vacias, text, flags=re.DOTALL)
                 
                 # 2. Arreglar el exceso de tabulaciones (&) en bloques de casos
                 text = re.sub(r'\\begin\{cases\}.*?\\end\{cases\}', arreglar_ampersands_sobrantes, text, flags=re.DOTALL)
                 
-                # 3. Arreglo directo para el error específico "& \text{si} &" de tus apuntes
+                # 3. Arreglo directo para el error específico "& \text{si} &"
                 text = re.sub(r'&\s*\\text\{si\}\s*&', r'& \\text{si} ', text)
+                
+                # 4. NUEVO: Eliminar el anidamiento prohibido por LaTeX (ej. $$ \begin{align*} ... \end{align*} $$)
+                # Extrae solo la parte del begin/end y borra los $$ o \[ \] externos
+                text = re.sub(r'(?s)(?:\$\$|\\\[)\s*(\\begin\{(?:align|eqnarray|equation|gather)\*?\}.*?\\end\{(?:align|eqnarray|equation|gather)\*?\})\s*(?:\$\$|\\\])', r'\1', text)
                 
                 # Guardar el texto corregido en la celda
                 cell['source'] = text.splitlines(True)
                 
-        # Sobrescribir el archivo temporal con los errores de LaTeX ya corregidos
         with open(ruta_ipynb, "w", encoding="utf-8") as f:
             json.dump(notebook, f, indent=1)
             
     except Exception as e:
-        pass # Si algo falla al sanear, se intentará convertir el original intacto
+        pass
 
 
 st.title("Convertidor de .ipynb a PDF 📄")
@@ -80,14 +79,12 @@ if archivos_subidos:
 
                 for archivo in archivos_subidos:
                     ruta_ipynb = os.path.join(temp_dir, archivo.name)
-                    # 1. Guardar el archivo original
+                    
                     with open(ruta_ipynb, "wb") as f:
                         f.write(archivo.read())
 
-                    # 2. Aplicar el parche automático para errores de LaTeX
                     sanear_notebook(ruta_ipynb)
 
-                    # 3. Ejecutar la conversión
                     try:
                         resultado = subprocess.run(
                             ["jupyter", "nbconvert", "--to", "pdf", ruta_ipynb], 
