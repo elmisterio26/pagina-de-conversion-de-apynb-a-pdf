@@ -8,6 +8,10 @@ import re
 
 st.set_page_config(page_title="Convertidor Jupyter a PDF", layout="centered")
 
+# Inicializamos una clave única para el cuadro de arrastrar archivos si no existe
+if "uploader_key" not in st.session_state:
+    st.session_state.uploader_key = 0
+
 def sanear_notebook(ruta_ipynb):
     """
     Abre el archivo Jupyter y corrige automáticamente los errores de sintaxis 
@@ -47,8 +51,7 @@ def sanear_notebook(ruta_ipynb):
                 # 3. Arreglo directo para el error específico "& \text{si} &"
                 text = re.sub(r'&\s*\\text\{si\}\s*&', r'& \\text{si} ', text)
                 
-                # 4. NUEVO: Eliminar el anidamiento prohibido por LaTeX (ej. $$ \begin{align*} ... \end{align*} $$)
-                # Extrae solo la parte del begin/end y borra los $$ o \[ \] externos
+                # 4. Eliminar el anidamiento prohibido por LaTeX (ej. $$ \begin{align*} ... \end{align*} $$)
                 text = re.sub(r'(?s)(?:\$\$|\\\[)\s*(\\begin\{(?:align|eqnarray|equation|gather)\*?\}.*?\\end\{(?:align|eqnarray|equation|gather)\*?\})\s*(?:\$\$|\\\])', r'\1', text)
                 
                 # Guardar el texto corregido en la celda
@@ -64,14 +67,29 @@ def sanear_notebook(ruta_ipynb):
 st.title("Convertidor de .ipynb a PDF 📄")
 st.write("Arrastra tus archivos de Jupyter aquí y descárgalos en PDF.")
 
+# Cargamos el componente usando la clave guardada en la sesión
 archivos_subidos = st.file_uploader(
     "Selecciona o arrastra múltiples archivos .ipynb", 
     type=["ipynb"], 
-    accept_multiple_files=True
+    accept_multiple_files=True,
+    key=f"uploader_{st.session_state.uploader_key}"
 )
 
+# Si el usuario ha subido archivos, mostramos las opciones
 if archivos_subidos:
-    if st.button("🚀 Convertir a PDF"):
+    # Creamos dos columnas para poner los botones uno al lado del otro
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        boton_convertir = st.button("🚀 Convertir a PDF", use_container_width=True)
+        
+    with col2:
+        # Botón para limpiar toda la lista de golpe
+        if st.button("🗑️ Limpiar todo", use_container_width=True):
+            st.session_state.uploader_key += 1  # Cambia la clave del componente
+            st.rerun()  # Recarga la app inmediatamente para aplicar el vaciado
+
+    if boton_convertir:
         with st.spinner("Limpiando código y convirtiendo a PDF..."):
             with tempfile.TemporaryDirectory() as temp_dir:
                 pdfs_generados = []
